@@ -1,6 +1,10 @@
+from graphviz import Digraph
 from IPython.display import Markdown
 
 import systems.math as math
+
+COLORS = ["lightgrey", "pink", "lightgreen", "cyan"]
+
 
 class Tree:
     def __init__(self, value, left_tree=None, right_tree=None, comment=None):
@@ -14,7 +18,7 @@ class Tree:
             return math.ops.add(self, Scalar(obj))
         else:
             return math.ops.add(self, obj)
-        
+
     def __sub__(self, obj):
         if isinstance(obj, int) or isinstance(obj, float):
             return math.ops.sub(self, Scalar(obj))
@@ -33,7 +37,7 @@ class Tree:
         else:
             return math.ops.div(self, obj)
 
-    def __neg__(self, obj):
+    def __neg__(self):
         return math.ops.sub(Scalar(0), self)
 
     def __lshift__(self, obj):
@@ -48,6 +52,81 @@ class Tree:
         elif isinstance(self, Reference):
             return True
 
+    def node(self, dot):
+        color = None
+        fillcolor = None
+        style = None
+        fontcolor = None
+        if isinstance(self, Operation):
+            color = "blue"
+        # elif isinstance(self, Stock):
+        #     style = "filled"
+        #     fillcolor = "orange"
+        # elif isinstance(self, Flow):
+        #     style = "filled"
+        #     fillcolor = "purple"
+        #     fontcolor = "white"
+        # elif isinstance(self, Variable):
+        #     style = "filled"
+        #     fillcolor = "green"
+        #     fontcolor = "white"
+
+        dot.node(
+            name=str(id(self)),
+            label=str(self.value),
+            color=color,
+            fillcolor=fillcolor,
+            style=style,
+            fontcolor=fontcolor,
+        )
+
+    def visualize(self, dot=None, comments=False, comment_colors_used=[]):
+        if dot is None:
+            dot = Digraph()
+
+        # TODO: it would be convenient if it was possible to only draw the comment block around leaves and parent, I need to figure out a way to define the boundaries that a comment actually applies to.
+
+        if comments and self.comment is not None:
+            sub_color = None
+            for color in COLORS:
+                if color not in comment_colors_used:
+                    sub_color = color
+                    break
+            if sub_color is None:
+                comment_colors_used = []
+                sub_color = COLORS[0]
+            comment_colors_used.append(sub_color)
+
+            with dot.subgraph(
+                name=f"cluster_commented{id(self)}",
+                body=[
+                    "style=filled\n",
+                    f"fillcolor={sub_color}\n",
+                    f'label="{self.comment}"\n',
+                    "labelloc=b\n",
+                ],
+            ) as g:
+
+                self._visualize_inner(g, comments, comment_colors_used)
+
+        else:
+            self._visualize_inner(dot, comments, comment_colors_used)
+
+        return dot
+
+    def _visualize_inner(self, g, comments, comment_colors_used):
+        self.node(g)
+
+        if self.left_tree:
+            g.edge(str(id(self.left_tree)), str(id(self)))
+            g = self.left_tree.visualize(g, comments, comment_colors_used)
+
+        if self.right_tree:
+            g.edge(str(id(self.right_tree)), str(id(self)))
+            g = self.right_tree.visualize(g, comments, comment_colors_used)
+
+        return g
+
 
 class Operation(Tree):
     def __init__(self, op, left_tree=None, right_tree=None):
@@ -57,7 +136,7 @@ class Operation(Tree):
     def __repr__(self):
         return f"({self.op} {self.left_tree.__repr__()} {self.right_tree.__repr__()})"
 
-    def latex(self, annotations=False): #recursive
+    def latex(self, annotations=False):  # recursive
         return Markdown(f"${self.latex_str(annotations)}$")
 
     def latex_repr(self, latex_left: str, latex_right: str) -> str:
@@ -148,4 +227,3 @@ class Reference(Tree):
 
     def latex_str(self, annotations=False, top=False):
         return f"\\mathit{{{self.name}}}"
-        pass
